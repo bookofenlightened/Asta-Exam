@@ -49,10 +49,14 @@ def upload():
         # Extract text
         text = extract_text(path)
         if not text.strip():
-            return "No text extracted", 400
+            return jsonify({"ok": False, "error": "No text extracted"}), 400
 
         # Generate questions from AI
         questions = generate_questions(text)
+        print("DEBUG AI Questions:", questions)  # DEBUG log for Render
+
+        if not questions:
+            return jsonify({"ok": False, "error": "AI did not return valid questions"}), 500
 
         # Insert into DB
         conn = get_conn()
@@ -60,21 +64,32 @@ def upload():
         ins = """INSERT INTO questions 
                  (question_text, option_a, option_b, option_c, option_d, correct_answer, difficulty, source, approved, source_pdf) 
                  VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
+        inserted = 0
         for q in questions:
-            opts = q.get('options', {})
-            vals = (q.get('question'), opts.get('A'), opts.get('B'), opts.get('C'), opts.get('D'),
-                    q.get('answer'), q.get('difficulty','Medium'), "AI", True, path)
             try:
+                opts = q.get('options', {})
+                vals = (
+                    q.get('question'),
+                    opts.get('A'),
+                    opts.get('B'),
+                    opts.get('C'),
+                    opts.get('D'),
+                    q.get('answer'),
+                    q.get('difficulty', 'Medium'),
+                    "AI",
+                    True,
+                    path
+                )
                 cursor.execute(ins, vals)
+                inserted += 1
             except Exception as e:
                 print("DB insert error:", e)
         conn.commit()
         conn.close()
 
-        return jsonify({"ok": True, "inserted": len(questions)})
+        return jsonify({"ok": True, "inserted": inserted})
     return render_template('upload.html')
 
 if __name__ == "__main__":
-    import os
-    port = int(os.environ.get("PORT", 5000))  # Render এর PORT env variable
+    port = int(os.environ.get("PORT", 5000))  # Render PORT env variable
     app.run(host="0.0.0.0", port=port)
